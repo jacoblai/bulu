@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bulu/ketama"
 	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/dgryski/go-ketama"
 	"github.com/libp2p/go-reuseport"
 	"log"
 	"net/http"
@@ -31,21 +31,18 @@ func init() {
 
 func main() {
 	var (
-		addr    = flag.String("l", ":7003", "绑定Host地址")
+		addr    = flag.String("l", ":7003", "bind host port")
 		pemPath = flag.String("pem", "server.pem", "path to pem file")
 		keyPath = flag.String("key", "server.key", "path to key file")
 		proto   = flag.String("proto", "http", "Proxy protocol (http or https)")
 	)
 	flag.Parse()
 
-	ks, err := ketama.New([]ketama.Bucket{
-		{"http://127.0.0.1:7001/", 100},
-		{"http://127.0.0.1:7002/", 100},
-		{"http://127.0.0.1:7004/", 100},
+	ks := ketama.New([]ketama.Bucket{
+		&SimpleBucket{"http://127.0.0.1:7001/", 100},
+		&SimpleBucket{"http://127.0.0.1:7002/", 100},
+		&SimpleBucket{"http://127.0.0.1:7004/", 100},
 	})
-	if err != nil {
-		panic(err)
-	}
 
 	if *proto != "http" && *proto != "https" {
 		log.Fatal("Protocol must be either http or https")
@@ -63,9 +60,9 @@ func main() {
 	srv := &http.Server{
 		Addr: *addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			node := ks.Hash(r.RemoteAddr)
-			log.Printf("proxy_url: %s\n", node)
-			u, _ := url.Parse(node)
+			node := ks.Hash([]byte(r.RemoteAddr))
+			//log.Printf("proxy_url: %s\n", node.Label())
+			u, _ := url.Parse(node.Label())
 			proxy := httputil.NewSingleHostReverseProxy(u)
 			proxy.ServeHTTP(w, r)
 		}),
@@ -108,4 +105,17 @@ func main() {
 		}
 	}()
 	<-cleanupDone
+}
+
+type SimpleBucket struct {
+	Labels  string
+	Weights uint32
+}
+
+func (s *SimpleBucket) Label() string {
+	return s.Labels
+}
+
+func (s *SimpleBucket) Weight() uint32 {
+	return s.Weights
 }
