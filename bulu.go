@@ -5,11 +5,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/dgryski/go-ketama"
 	"github.com/libp2p/go-reuseport"
-	"io"
 	"log"
-	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"runtime"
@@ -36,6 +37,16 @@ func main() {
 		proto   = flag.String("proto", "http", "Proxy protocol (http or https)")
 	)
 	flag.Parse()
+
+	ks, err := ketama.New([]ketama.Bucket{
+		{"http://127.0.0.1:7001/", 100},
+		{"http://127.0.0.1:7002/", 100},
+		{"http://127.0.0.1:7004/", 100},
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	if *proto != "http" && *proto != "https" {
 		log.Fatal("Protocol must be either http or https")
 	}
@@ -52,11 +63,11 @@ func main() {
 	srv := &http.Server{
 		Addr: *addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodConnect {
-				handleTunneling(w, r)
-			} else {
-				handleHTTP(w, r)
-			}
+			node := ks.Hash(r.RemoteAddr)
+			log.Printf("proxy_url: %s\n", node)
+			u, _ := url.Parse(node)
+			proxy := httputil.NewSingleHostReverseProxy(u)
+			proxy.ServeHTTP(w, r)
 		}),
 		// Disable HTTP/2.
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
@@ -97,50 +108,4 @@ func main() {
 		}
 	}()
 	<-cleanupDone
-}
-
-func handleTunneling(w http.ResponseWriter, r *http.Request) {
-	destConn, err := net.DialTimeout("tcp", r.Host, 10*time.Second)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
-		return
-	}
-	clientConn, _, err := hijacker.Hijack()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-	}
-	go transfer(destConn, clientConn)
-	go transfer(clientConn, destConn)
-}
-
-func transfer(destination io.WriteCloser, source io.ReadCloser) {
-	defer destination.Close()
-	defer source.Close()
-	_, _ = io.Copy(destination, source)
-}
-
-func handleHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, err := http.DefaultTransport.RoundTrip(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer resp.Body.Close()
-	copyHeader(w.Header(), resp.Header)
-	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
-}
-
-func copyHeader(dst, src http.Header) {
-	for k, vv := range src {
-		for _, v := range vv {
-			dst.Add(k, v)
-		}
-	}
 }
