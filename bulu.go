@@ -4,15 +4,17 @@ import (
 	"bulu/ketama"
 	"context"
 	"crypto/tls"
-	"flag"
+	"encoding/json"
 	"fmt"
 	"github.com/libp2p/go-reuseport"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -29,41 +31,101 @@ func init() {
 	}
 }
 
+type Config struct {
+	Host    string `json:"host"`
+	PemPath string `json:"pemPath"`
+	KeyPath string `json:"keyPath"`
+	Proto   string `json:"proto"`
+	Nodes   []Node `json:"nodes"`
+}
+
+type Node struct {
+	Name    string `json:"name"`
+	Url     string `json:"url"`
+	Weights uint32 `json:"weights"`
+}
+
 func main() {
-	var (
-		addr    = flag.String("l", ":7003", "bind host port")
-		pemPath = flag.String("pem", "server.pem", "path to pem file")
-		keyPath = flag.String("key", "server.key", "path to key file")
-		proto   = flag.String("proto", "http", "Proxy protocol (http or https)")
-	)
-	flag.Parse()
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		log.Fatal(err)
+	}
+	var conf Config
+	if _, err := os.Stat(dir + "/default.conf"); err != nil {
+		c := Config{}
+		c.Host = ":7003"
+		c.Proto = "http"
+		c.PemPath = "server.pem"
+		c.KeyPath = "server.key"
+		c.Nodes = make([]Node, 0)
+		c.Nodes = append(c.Nodes, Node{Name: "1", Url: "http://127.0.0.1:7001/", Weights: 100})
+		c.Nodes = append(c.Nodes, Node{Name: "2", Url: "http://127.0.0.1:7002/", Weights: 100})
+		c.Nodes = append(c.Nodes, Node{Name: "3", Url: "http://127.0.0.1:7004/", Weights: 100})
+		indent, _ := json.MarshalIndent(&c, "", "\t")
+		err := os.WriteFile(dir+"/default.conf", indent, 0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("default config created in", dir+"/default.conf")
+		conf = c
+	} else {
+		bts, err := os.ReadFile(dir + "/default.conf")
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = json.Unmarshal(bts, &conf)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
-	ks := ketama.New([]ketama.Bucket{
-		&SimpleBucket{"http://127.0.0.1:7001/", 100},
-		&SimpleBucket{"http://127.0.0.1:7002/", 100},
-		&SimpleBucket{"http://127.0.0.1:7004/", 100},
-	})
-
-	if *proto != "http" && *proto != "https" {
+	if conf.Proto != "http" && conf.Proto != "https" {
 		log.Fatal("Protocol must be either http or https")
 	}
 
-	if *proto == "https" {
-		if _, err := os.Stat(*pemPath); err != nil {
+	nds := make(map[string]uint32)
+	for _, v := range conf.Nodes {
+		nds[v.Url] = v.Weights
+	}
+	for k := range nds {
+		u, err := url.Parse(k)
+		if err != nil {
+			delete(nds, k)
+			log.Println(err)
+			continue
+		}
+		_, err = net.DialTimeout("tcp", u.Host, 2*time.Second)
+		if err != nil {
+			delete(nds, k)
+			log.Println("Site unreachable", err)
+		} else {
+			log.Println("check service alive of", u.Host)
+		}
+	}
+
+	bks := make([]ketama.Bucket, 0)
+	for k, v := range nds {
+		bks = append(bks, &SimpleBucket{k, v})
+	}
+	ks := ketama.New(bks)
+
+	if conf.Proto == "https" {
+		if _, err := os.Stat(conf.PemPath); err != nil {
 			panic(err)
 		}
-		if _, err := os.Stat(*keyPath); err != nil {
+		if _, err := os.Stat(conf.KeyPath); err != nil {
 			panic(err)
 		}
 	}
 
 	srv := &http.Server{
-		Addr: *addr,
+		Addr: conf.Host,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			node := ks.Hash([]byte(r.RemoteAddr))
-			//log.Printf("proxy_url: %s\n", node.Label())
+			log.Printf("proxy_url: %s\n", node.Label())
 			u, _ := url.Parse(node.Label())
 			proxy := httputil.NewSingleHostReverseProxy(u)
+			proxy.ErrorHandler = errorHandler()
 			proxy.ServeHTTP(w, r)
 		}),
 		// Disable HTTP/2.
@@ -71,16 +133,16 @@ func main() {
 	}
 	go func() {
 		for i := 0; i < runtime.NumCPU(); i++ {
-			ln, err := reuseport.Listen("tcp", *addr)
+			ln, err := reuseport.Listen("tcp", conf.Host)
 			if err != nil {
 				log.Fatal(err)
 			}
-			if *proto == "http" {
+			if conf.Proto == "http" {
 				if err := srv.Serve(ln); err != nil {
 					_ = ln.Close()
 				}
 			} else {
-				if err := srv.ServeTLS(ln, *pemPath, *keyPath); err != nil {
+				if err := srv.ServeTLS(ln, conf.PemPath, conf.KeyPath); err != nil {
 					_ = ln.Close()
 				}
 			}
@@ -105,6 +167,13 @@ func main() {
 		}
 	}()
 	<-cleanupDone
+}
+
+func errorHandler() func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, req *http.Request, err error) {
+		fmt.Printf("Got error while modifying response: %v \n", err)
+		return
+	}
 }
 
 type SimpleBucket struct {

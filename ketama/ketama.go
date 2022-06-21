@@ -16,6 +16,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
+	"sync"
 )
 
 // Bucket is a source we hash into.  The Label() is used as the hash key and Weight represents
@@ -34,6 +35,7 @@ type continuumPoint struct {
 type Continuum struct {
 	ring    points
 	buckets []Bucket
+	sync.RWMutex
 }
 
 type points []continuumPoint
@@ -56,6 +58,9 @@ func (c *Continuum) Buckets() []Bucket {
 
 // Reset the Continuum to use the given buckets in the hashring
 func (c *Continuum) Reset(buckets []Bucket) {
+	c.Lock()
+	defer c.Unlock()
+
 	numbuckets := len(buckets)
 
 	ring := make(points, 0, numbuckets*160)
@@ -99,6 +104,9 @@ func (c *Continuum) Reset(buckets []Bucket) {
 
 // Hash an array of bytes into a location in the ring
 func (c *Continuum) Hash(thing []byte) Bucket {
+	c.RLock()
+	defer c.RUnlock()
+
 	hash := md5.Sum(thing)
 
 	h := binary.LittleEndian.Uint32(hash[0:4])
