@@ -50,33 +50,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	confPath := dir + "/bulu_conf.js"
+	if _, err := os.Stat(confPath); err != nil {
+		log.Fatal("bulu_conf config file not found..")
+	}
+
+	bts, err := os.ReadFile(confPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var conf Config
-	if _, err := os.Stat(dir + "/default.conf"); err != nil {
-		c := Config{}
-		c.Host = ":7003"
-		c.Proto = "http"
-		c.PemPath = "server.pem"
-		c.KeyPath = "server.key"
-		c.Nodes = make([]Node, 0)
-		c.Nodes = append(c.Nodes, Node{Name: "1", Url: "http://127.0.0.1:7001/", Weights: 100})
-		c.Nodes = append(c.Nodes, Node{Name: "2", Url: "http://127.0.0.1:7002/", Weights: 100})
-		c.Nodes = append(c.Nodes, Node{Name: "3", Url: "http://127.0.0.1:7004/", Weights: 100})
-		indent, _ := json.MarshalIndent(&c, "", "\t")
-		err := os.WriteFile(dir+"/default.conf", indent, 0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println("default config created in", dir+"/default.conf")
-		conf = c
-	} else {
-		bts, err := os.ReadFile(dir + "/default.conf")
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = json.Unmarshal(bts, &conf)
-		if err != nil {
-			log.Fatal(err)
-		}
+	err = json.Unmarshal(bts, &conf)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	if conf.Proto != "http" && conf.Proto != "https" {
