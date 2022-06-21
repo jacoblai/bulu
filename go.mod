@@ -1,4 +1,4 @@
-module bulu
+module github.com/jacoblai/bulu
 
 go 1.18
 

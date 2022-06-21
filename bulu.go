@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bulu/engine"
-	"bulu/model"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/jacoblai/bulu/engine"
+	"github.com/jacoblai/bulu/model"
 	"github.com/libp2p/go-reuseport"
 	"log"
 	"net/http"

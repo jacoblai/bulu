@@ -1,8 +1,9 @@
 package engine
 
 import (
-	"bulu/ketama"
-	"bulu/model"
+	"errors"
+	"github.com/jacoblai/bulu/ketama"
+	"github.com/jacoblai/bulu/model"
 	"log"
 	"net"
 	"net/http"
@@ -38,10 +39,14 @@ func (e *Engine) Open() error {
 		_, err = net.DialTimeout("tcp", u.Host, 2*time.Second)
 		if err != nil {
 			delete(nds, k)
-			log.Println("Site unreachable", err)
+			log.Println(err)
 		} else {
 			log.Println("check service alive of", u.Host)
 		}
+	}
+
+	if len(nds) <= 0 {
+		return errors.New("not service alive")
 	}
 
 	bks := make([]ketama.Bucket, 0)
@@ -93,5 +98,5 @@ func (e *Engine) ErrorHandler() func(http.ResponseWriter, *http.Request, error) 
 
 func (e *Engine) ResultErr(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("Bulu no service"))
+	_, _ = w.Write([]byte("Bulu no service alive"))
 }
