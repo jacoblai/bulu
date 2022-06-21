@@ -2,6 +2,7 @@ package main
 
 import (
 	"bulu/ketama"
+	"bulu/model"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -31,20 +32,6 @@ func init() {
 	}
 }
 
-type Config struct {
-	Host    string `json:"host"`
-	PemPath string `json:"pemPath"`
-	KeyPath string `json:"keyPath"`
-	Proto   string `json:"proto"`
-	Nodes   []Node `json:"nodes"`
-}
-
-type Node struct {
-	Name    string `json:"name"`
-	Url     string `json:"url"`
-	Weights uint32 `json:"weights"`
-}
-
 func main() {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
@@ -60,7 +47,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var conf Config
+	var conf model.Config
 	err = json.Unmarshal(bts, &conf)
 	if err != nil {
 		log.Fatal(err)
@@ -92,7 +79,7 @@ func main() {
 
 	bks := make([]ketama.Bucket, 0)
 	for k, v := range nds {
-		bks = append(bks, &SimpleBucket{k, v})
+		bks = append(bks, &model.SimpleBucket{Labels: k, Weights: v})
 	}
 	ks := ketama.New(bks)
 
@@ -109,7 +96,7 @@ func main() {
 		Addr: conf.Host,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			node := ks.Hash([]byte(r.RemoteAddr))
-			log.Printf("proxy_url: %s\n", node.Label())
+			//log.Printf("proxy_url: %s\n", node.Label())
 			u, _ := url.Parse(node.Label())
 			proxy := httputil.NewSingleHostReverseProxy(u)
 			proxy.ErrorHandler = errorHandler()
@@ -161,17 +148,4 @@ func errorHandler() func(http.ResponseWriter, *http.Request, error) {
 		fmt.Printf("Got error while modifying response: %v \n", err)
 		return
 	}
-}
-
-type SimpleBucket struct {
-	Labels  string
-	Weights uint32
-}
-
-func (s *SimpleBucket) Label() string {
-	return s.Labels
-}
-
-func (s *SimpleBucket) Weight() uint32 {
-	return s.Weights
 }
