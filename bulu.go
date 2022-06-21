@@ -1,15 +1,15 @@
 package main
 
 import (
-	"bulu/ketama"
+	"bulu/engine"
 	"bulu/model"
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/libp2p/go-reuseport"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -33,55 +33,42 @@ func init() {
 }
 
 func main() {
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		log.Fatal(err)
-	}
-	confPath := dir + "/bulu_conf.js"
-	if _, err := os.Stat(confPath); err != nil {
-		log.Fatal("bulu_conf config file not found..")
+	var (
+		confPath = flag.String("c", ".", "config file path")
+	)
+	flag.Parse()
+	if *confPath == "." {
+		dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+		if err != nil {
+			log.Fatal(err)
+		}
+		*confPath = dir + "/bulu_conf.js"
 	}
 
-	bts, err := os.ReadFile(confPath)
+	if _, err := os.Stat(*confPath); err != nil {
+		log.Fatal("bulu config file not found..")
+	}
+
+	bts, err := os.ReadFile(*confPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("read config file error..")
 	}
 
 	var conf model.Config
 	err = json.Unmarshal(bts, &conf)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("config file content error..")
 	}
 
 	if conf.Proto != "http" && conf.Proto != "https" {
 		log.Fatal("Protocol must be either http or https")
 	}
 
-	nds := make(map[string]uint32)
-	for _, v := range conf.Nodes {
-		nds[v.Url] = v.Weights
+	eng := engine.NewEngine(conf)
+	err = eng.Open()
+	if err != nil {
+		log.Fatal(err)
 	}
-	for k := range nds {
-		u, err := url.Parse(k)
-		if err != nil {
-			delete(nds, k)
-			log.Println(err)
-			continue
-		}
-		_, err = net.DialTimeout("tcp", u.Host, 2*time.Second)
-		if err != nil {
-			delete(nds, k)
-			log.Println("Site unreachable", err)
-		} else {
-			log.Println("check service alive of", u.Host)
-		}
-	}
-
-	bks := make([]ketama.Bucket, 0)
-	for k, v := range nds {
-		bks = append(bks, &model.SimpleBucket{Labels: k, Weights: v})
-	}
-	ks := ketama.New(bks)
 
 	if conf.Proto == "https" {
 		if _, err := os.Stat(conf.PemPath); err != nil {
@@ -95,14 +82,18 @@ func main() {
 	srv := &http.Server{
 		Addr: conf.Host,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			node := ks.Hash([]byte(r.RemoteAddr))
+			node, err := eng.Kts.Hash([]byte(r.RemoteAddr))
+			if err != nil {
+				eng.ResultErr(w)
+				return
+			}
 			//log.Printf("proxy_url: %s\n", node.Label())
 			u, _ := url.Parse(node.Label())
 			proxy := httputil.NewSingleHostReverseProxy(u)
-			proxy.ErrorHandler = errorHandler()
+			proxy.ErrorHandler = eng.ErrorHandler()
 			proxy.ServeHTTP(w, r)
 		}),
-		// Disable HTTP/2.
+		// Disable HTTP/2. 防止却持
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
 	go func() {
@@ -141,11 +132,4 @@ func main() {
 		}
 	}()
 	<-cleanupDone
-}
-
-func errorHandler() func(http.ResponseWriter, *http.Request, error) {
-	return func(w http.ResponseWriter, req *http.Request, err error) {
-		fmt.Printf("Got error while modifying response: %v \n", err)
-		return
-	}
 }

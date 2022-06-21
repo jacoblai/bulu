@@ -14,6 +14,7 @@ arbitrary strings, instead of just memcached server IP addresses.
 import (
 	"crypto/md5"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -53,7 +54,10 @@ func New(buckets []Bucket) *Continuum {
 
 // Buckets returns the buckets last set in the continuum
 func (c *Continuum) Buckets() []Bucket {
-	return c.buckets
+	c.RLock()
+	defer c.RUnlock()
+	bks := c.buckets
+	return bks
 }
 
 // Reset the Continuum to use the given buckets in the hashring
@@ -103,14 +107,20 @@ func (c *Continuum) Reset(buckets []Bucket) {
 }
 
 // Hash an array of bytes into a location in the ring
-func (c *Continuum) Hash(thing []byte) Bucket {
+func (c *Continuum) Hash(thing []byte) (Bucket, error) {
 	c.RLock()
 	defer c.RUnlock()
+	bks := len(c.buckets)
+	if bks <= 0 {
+		return nil, errors.New("no service")
+	} else if bks == 1 {
+		return c.buckets[0], nil
+	}
 
 	hash := md5.Sum(thing)
 
 	h := binary.LittleEndian.Uint32(hash[0:4])
-	return c.Bucket(h)
+	return c.Bucket(h), nil
 }
 
 // Bucket returns the bucket at or after a location in the ring
