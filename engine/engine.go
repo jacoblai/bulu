@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/jacoblai/bulu/ketama"
 	"github.com/jacoblai/bulu/model"
+	"github.com/jacoblai/bulu/rate"
 	"log"
 	"net"
 	"net/http"
@@ -15,8 +16,9 @@ import (
 )
 
 type Engine struct {
-	Config model.Config
-	Kts    *ketama.Continuum
+	Config      model.Config
+	Kts         *ketama.Continuum
+	RateLimiter *rate.RateLimiter
 	sync.Mutex
 }
 
@@ -30,6 +32,15 @@ func (e *Engine) InitNodes(c model.Config) error {
 	e.Lock()
 	defer e.Unlock()
 	e.Config = c
+
+	rt, err := time.ParseDuration(e.Config.RateLimit.RateTime)
+	if err != nil {
+		return err
+	}
+	e.RateLimiter = rate.NewRateLimiter(rt, e.Config.RateLimit.RateLimit, func() rate.Window {
+		return rate.NewLocalWindow()
+	})
+
 	nds := make(map[string]uint32)
 	for _, v := range e.Config.Nodes {
 		nds[v.Url] = v.Weights

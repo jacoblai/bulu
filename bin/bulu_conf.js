@@ -4,6 +4,10 @@
 	"keyPath": "server.key",
 	"proto": "http",
 	"jwtSecret":"none",
+	"rateLimit":{
+		"rateTime":"1s",
+		"rateLimit":100000,
+	},
 	"nodes": [
 		{
 			"name": "node1",

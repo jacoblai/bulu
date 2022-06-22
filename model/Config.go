@@ -7,6 +7,12 @@ type Config struct {
 	Proto     string `json:"proto"`
 	JwtSecret string `json:"jwtSecret"`
 	Nodes     []Node `json:"nodes"`
+	RateLimit Limit  `json:"rateLimit"`
+}
+
+type Limit struct {
+	RateTime  string `json:"rateTime"`
+	RateLimit int64  `json:"rateLimit"`
 }
 
 type Node struct {

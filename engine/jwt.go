@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-func (d *Engine) JwtAuth(next http.Handler) http.Handler {
+func (e *Engine) JwtAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if d.Config.JwtSecret == "none" {
+		if e.Config.JwtSecret == "none" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -18,7 +18,7 @@ func (d *Engine) JwtAuth(next http.Handler) http.Handler {
 		}
 		if auth != "" {
 			token, err := jwt.ParseWithClaims(auth, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
-				return []byte(d.Config.JwtSecret), nil
+				return []byte(e.Config.JwtSecret), nil
 			})
 			if err == nil {
 				if _, ok := token.Claims.(*jwt.StandardClaims); ok && token.Valid {

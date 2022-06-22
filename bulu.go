@@ -83,6 +83,10 @@ func main() {
 	srv := &http.Server{
 		Addr: conf.Host,
 		Handler: eng.JwtAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !eng.RateLimiter.Grant() {
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
 			node, err := eng.Kts.Hash([]byte(r.RemoteAddr))
 			if err != nil {
 				eng.ResultErr(w)
