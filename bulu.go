@@ -65,10 +65,11 @@ func main() {
 	}
 
 	eng := engine.NewEngine(conf)
-	err = eng.Open()
+	err = eng.InitNodes(conf)
 	if err != nil {
 		log.Fatal(err)
 	}
+	eng.Watcher(*confPath)
 
 	if conf.Proto == "https" {
 		if _, err := os.Stat(conf.PemPath); err != nil {

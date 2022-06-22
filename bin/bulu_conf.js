@@ -23,11 +23,6 @@
 			"name": "node4",
 			"url": "http://127.0.0.1:7005",
 			"weights": 100
-		},
-		{
-			"name": "node5",
-			"url": "http://127.0.0.1:7006",
-			"weights": 100
 		}
 	]
 }

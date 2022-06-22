@@ -10,12 +10,14 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Engine struct {
 	Config model.Config
 	Kts    *ketama.Continuum
+	sync.Mutex
 }
 
 func NewEngine(c model.Config) *Engine {
@@ -24,7 +26,10 @@ func NewEngine(c model.Config) *Engine {
 	}
 }
 
-func (e *Engine) Open() error {
+func (e *Engine) InitNodes(c model.Config) error {
+	e.Lock()
+	defer e.Unlock()
+	e.Config.Nodes = c.Nodes
 	nds := make(map[string]uint32)
 	for _, v := range e.Config.Nodes {
 		nds[v.Url] = v.Weights
