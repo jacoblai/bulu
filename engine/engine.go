@@ -11,26 +11,23 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 )
 
 type Engine struct {
 	Config      model.Config
-	Kts         *ketama.Continuum
+	Kts         map[string]*ketama.Continuum
 	RateLimiter *rate.RateLimiter
-	sync.Mutex
 }
 
 func NewEngine(c model.Config) *Engine {
 	return &Engine{
 		Config: c,
+		Kts:    make(map[string]*ketama.Continuum),
 	}
 }
 
 func (e *Engine) InitNodes(c model.Config) error {
-	e.Lock()
-	defer e.Unlock()
 	e.Config = c
 
 	rt, err := time.ParseDuration(e.Config.RateLimit.RateTime)
@@ -41,35 +38,38 @@ func (e *Engine) InitNodes(c model.Config) error {
 		return rate.NewLocalWindow()
 	})
 
-	nds := make(map[string]uint32)
-	for _, v := range e.Config.Nodes {
-		nds[v.Url] = v.Weights
-	}
-	for k := range nds {
-		u, err := url.Parse(k)
-		if err != nil {
-			delete(nds, k)
-			log.Println(err)
-			continue
+	for _, v := range e.Config.Domains {
+		dm := v.Domain
+		nds := make(map[string]uint32)
+		for _, n := range v.Nodes {
+			nds[n.Url] = n.Weights
 		}
-		_, err = net.DialTimeout("tcp", u.Host, 2*time.Second)
-		if err != nil {
-			delete(nds, k)
-			log.Println(err)
-		} else {
-			log.Println("check service alive of", u.Host)
+		for k := range nds {
+			u, err := url.Parse(k)
+			if err != nil {
+				delete(nds, k)
+				log.Println(err)
+				continue
+			}
+			_, err = net.DialTimeout("tcp", u.Host, 2*time.Second)
+			if err != nil {
+				delete(nds, k)
+				log.Println(err)
+			} else {
+				log.Println("check service alive of", u.Host)
+			}
 		}
-	}
 
-	if len(nds) <= 0 {
-		return errors.New("not service alive")
-	}
+		if len(nds) <= 0 {
+			return errors.New("not service alive")
+		}
 
-	bks := make([]ketama.Bucket, 0)
-	for k, v := range nds {
-		bks = append(bks, &model.SimpleBucket{Labels: k, Weights: v})
+		bks := make([]ketama.Bucket, 0)
+		for k, v := range nds {
+			bks = append(bks, &model.SimpleBucket{Labels: k, Weights: v})
+		}
+		e.Kts[dm] = ketama.New(bks)
 	}
-	e.Kts = ketama.New(bks)
 
 	return nil
 }
@@ -82,7 +82,7 @@ func (e *Engine) ErrorHandler() func(http.ResponseWriter, *http.Request, error) 
 			org = strings.Replace(org, ": connect: connection refused", "", 1)
 			//节点列表删除已死节点
 			bks := make([]ketama.Bucket, 0)
-			for _, v := range e.Kts.Buckets() {
+			for _, v := range e.Kts[r.Host].Buckets() {
 				if strings.Contains(v.Label(), org) {
 					continue
 				}
@@ -97,9 +97,13 @@ func (e *Engine) ErrorHandler() func(http.ResponseWriter, *http.Request, error) 
 				e.ResultErr(w)
 				return
 			}
-			e.Kts.Reset(bks)
+			kt, err := e.GetContinuum(r.Host)
+			if err != nil {
+				log.Println(err)
+			}
+			kt.Reset(bks)
 			//重定向到活的节点
-			node, err := e.Kts.Hash([]byte(r.RemoteAddr))
+			node, err := kt.Hash([]byte(r.RemoteAddr))
 			if err != nil {
 				e.ResultErr(w)
 				return
@@ -115,4 +119,15 @@ func (e *Engine) ErrorHandler() func(http.ResponseWriter, *http.Request, error) 
 func (e *Engine) ResultErr(w http.ResponseWriter) {
 	w.Header().Add("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{"ok":false,"errMsg":"Bulu no service alive"}`))
+}
+
+func (e *Engine) GetContinuum(host string) (*ketama.Continuum, error) {
+	kt, ok := e.Kts[host]
+	if !ok {
+		kt, ok = e.Kts["*"]
+		if !ok {
+			return nil, errors.New("not match domain")
+		}
+	}
+	return kt, nil
 }

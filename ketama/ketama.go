@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
 )
 
 // Bucket is a source we hash into.  The Label() is used as the hash key and Weight represents
@@ -36,7 +35,6 @@ type continuumPoint struct {
 type Continuum struct {
 	ring    points
 	buckets []Bucket
-	sync.RWMutex
 }
 
 type points []continuumPoint
@@ -54,16 +52,12 @@ func New(buckets []Bucket) *Continuum {
 
 // Buckets returns the buckets last set in the continuum
 func (c *Continuum) Buckets() []Bucket {
-	c.RLock()
-	defer c.RUnlock()
 	bks := c.buckets
 	return bks
 }
 
 // Reset the Continuum to use the given buckets in the hashring
 func (c *Continuum) Reset(buckets []Bucket) {
-	c.Lock()
-	defer c.Unlock()
 
 	numbuckets := len(buckets)
 
@@ -108,8 +102,6 @@ func (c *Continuum) Reset(buckets []Bucket) {
 
 // Hash an array of bytes into a location in the ring
 func (c *Continuum) Hash(thing []byte) (Bucket, error) {
-	c.RLock()
-	defer c.RUnlock()
 	bks := len(c.buckets)
 	if bks <= 0 {
 		return nil, errors.New("no service")

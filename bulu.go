@@ -30,6 +30,13 @@ func init() {
 	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
 		log.Fatal(err)
 	}
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	ht := http.DefaultTransport.(*http.Transport)
+	ht.MaxIdleConnsPerHost = 1000000
+	ht.MaxConnsPerHost = 1000000
+	ht.MaxIdleConns = 1000000
+	ht.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 }
 
 func main() {
@@ -81,13 +88,21 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr: conf.Host,
+		Addr:         conf.Host,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  15 * time.Second,
 		Handler: eng.JwtAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
 			if !eng.RateLimiter.Grant() {
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
 			}
-			node, err := eng.Kts.Hash([]byte(r.RemoteAddr))
+			kt, err := eng.GetContinuum(r.Host)
+			if err != nil {
+				log.Println(err)
+			}
+			node, err := kt.Hash([]byte(r.RemoteAddr))
 			if err != nil {
 				eng.ResultErr(w)
 				return
@@ -101,6 +116,7 @@ func main() {
 		// Disable HTTP/2. 防止却持
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
+	srv.SetKeepAlivesEnabled(true)
 	go func() {
 		for i := 0; i < runtime.NumCPU(); i++ {
 			ln, err := reuseport.Listen("tcp", conf.Host)

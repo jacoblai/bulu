@@ -1,18 +1,23 @@
 package model
 
 type Config struct {
-	Host      string `json:"host"`
-	PemPath   string `json:"pemPath"`
-	KeyPath   string `json:"keyPath"`
-	Proto     string `json:"proto"`
-	JwtSecret string `json:"jwtSecret"`
-	Nodes     []Node `json:"nodes"`
-	RateLimit Limit  `json:"rateLimit"`
+	Host      string   `json:"host"`
+	PemPath   string   `json:"pemPath"`
+	KeyPath   string   `json:"keyPath"`
+	Proto     string   `json:"proto"`
+	JwtSecret string   `json:"jwtSecret"`
+	Domains   []Domain `json:"domains"`
+	RateLimit Limit    `json:"rateLimit"`
 }
 
 type Limit struct {
 	RateTime  string `json:"rateTime"`
 	RateLimit int64  `json:"rateLimit"`
+}
+
+type Domain struct {
+	Domain string `json:"domain"`
+	Nodes  []Node `json:"nodes"`
 }
 
 type Node struct {
