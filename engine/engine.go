@@ -97,6 +97,6 @@ func (e *Engine) ErrorHandler() func(http.ResponseWriter, *http.Request, error) 
 }
 
 func (e *Engine) ResultErr(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("Bulu no service alive"))
+	w.Header().Add("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"ok":false,"errMsg":"Bulu no service alive"}`))
 }
