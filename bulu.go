@@ -82,7 +82,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr: conf.Host,
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Handler: eng.JwtAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			node, err := eng.Kts.Hash([]byte(r.RemoteAddr))
 			if err != nil {
 				eng.ResultErr(w)
@@ -93,7 +93,7 @@ func main() {
 			proxy := httputil.NewSingleHostReverseProxy(u)
 			proxy.ErrorHandler = eng.ErrorHandler()
 			proxy.ServeHTTP(w, r)
-		}),
+		})),
 		// Disable HTTP/2. 防止却持
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}

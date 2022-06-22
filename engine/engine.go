@@ -29,7 +29,7 @@ func NewEngine(c model.Config) *Engine {
 func (e *Engine) InitNodes(c model.Config) error {
 	e.Lock()
 	defer e.Unlock()
-	e.Config.Nodes = c.Nodes
+	e.Config = c
 	nds := make(map[string]uint32)
 	for _, v := range e.Config.Nodes {
 		nds[v.Url] = v.Weights

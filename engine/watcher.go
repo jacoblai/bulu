@@ -29,6 +29,8 @@ func (e *Engine) Watcher(fpath string) {
 						if err == nil {
 							_ = e.InitNodes(conf)
 							log.Println("bulu config file was updated...")
+						} else {
+							log.Println("bulu config file invalidate...")
 						}
 					}
 				}

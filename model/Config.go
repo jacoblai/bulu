@@ -1,11 +1,12 @@
 package model
 
 type Config struct {
-	Host    string `json:"host"`
-	PemPath string `json:"pemPath"`
-	KeyPath string `json:"keyPath"`
-	Proto   string `json:"proto"`
-	Nodes   []Node `json:"nodes"`
+	Host      string `json:"host"`
+	PemPath   string `json:"pemPath"`
+	KeyPath   string `json:"keyPath"`
+	Proto     string `json:"proto"`
+	JwtSecret string `json:"jwtSecret"`
+	Nodes     []Node `json:"nodes"`
 }
 
 type Node struct {

@@ -3,6 +3,7 @@
 	"pemPath": "server.pem",
 	"keyPath": "server.key",
 	"proto": "http",
+	"jwtSecret":"none",
 	"nodes": [
 		{
 			"name": "node1",

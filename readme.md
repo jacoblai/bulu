@@ -10,10 +10,10 @@ Bulu。可以作为统一的API接入层。
 * 优雅关闭
 * 连接失败自动重定向到其他在线服务
 * 动态节点配置更新
+* JWT Authorization
 
 ## 待实现 Features
 * 流量控制
 * 熔断
 * 路由(分流，复制流量)
-* JWT Authorization
 * 后端service健康检查
