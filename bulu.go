@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/jacoblai/bulu/bufferPool"
 	"github.com/jacoblai/bulu/engine"
 	"github.com/jacoblai/bulu/model"
 	"github.com/libp2p/go-reuseport"
@@ -87,11 +88,10 @@ func main() {
 		}
 	}
 
+	pool := bufferPool.NewBufferPool()
+
 	srv := &http.Server{
-		Addr:         conf.Host,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  15 * time.Second,
+		Addr: conf.Host,
 		Handler: eng.JwtAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer r.Body.Close()
 			if !eng.RateLimiter.Grant() {
@@ -100,7 +100,8 @@ func main() {
 			}
 			kt, err := eng.GetContinuum(r.Host)
 			if err != nil {
-				log.Println(err)
+				eng.ResultErr(w)
+				return
 			}
 			node, err := kt.Hash([]byte(r.RemoteAddr))
 			if err != nil {
@@ -110,13 +111,11 @@ func main() {
 			//log.Printf("proxy_url: %s\n", node.Label())
 			u, _ := url.Parse(node.Label())
 			proxy := httputil.NewSingleHostReverseProxy(u)
+			proxy.BufferPool = pool
 			proxy.ErrorHandler = eng.ErrorHandler()
 			proxy.ServeHTTP(w, r)
 		})),
-		// Disable HTTP/2. 防止却持
-		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 	}
-	srv.SetKeepAlivesEnabled(true)
 	go func() {
 		for i := 0; i < runtime.NumCPU(); i++ {
 			ln, err := reuseport.Listen("tcp", conf.Host)

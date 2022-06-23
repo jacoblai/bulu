@@ -61,7 +61,7 @@ func (e *Engine) InitNodes(c model.Config) error {
 		}
 
 		if len(nds) <= 0 {
-			return errors.New("not service alive")
+			continue
 		}
 
 		bks := make([]ketama.Bucket, 0)
@@ -69,6 +69,10 @@ func (e *Engine) InitNodes(c model.Config) error {
 			bks = append(bks, &model.SimpleBucket{Labels: k, Weights: v})
 		}
 		e.Kts[dm] = ketama.New(bks)
+	}
+
+	if len(e.Kts) == 0 {
+		return errors.New("not service alive")
 	}
 
 	return nil
