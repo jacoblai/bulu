@@ -94,9 +94,11 @@ func main() {
 		Addr: conf.Host,
 		Handler: eng.JwtAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer r.Body.Close()
-			if !eng.RateLimiter.Grant() {
-				w.WriteHeader(http.StatusTooManyRequests)
-				return
+			if conf.RateLimit.RateLimit > 0 {
+				if !eng.RateLimiter.Grant() {
+					w.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
 			}
 			kt, err := eng.GetContinuum(r.Host)
 			if err != nil {
